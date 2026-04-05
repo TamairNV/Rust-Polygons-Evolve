@@ -1,0 +1,1 @@
+[Error] TypeError: 'text/html' is not a valid JavaScript MIME type.
