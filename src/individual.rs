@@ -1,10 +1,10 @@
 
 
 use crate::polygon;
-use crate::polygon::Polygon;
+use crate::polygon::Shape;
 #[derive(Clone)]
 pub struct Individual {
-    pub chromosomes : Vec<Polygon>,
+    pub chromosomes : Vec<Shape>,
     pub fitness : f64
 }
 
@@ -14,27 +14,42 @@ use tiny_skia::*;
 
 use tiny_skia::*;
 
+use tiny_skia::{Rect, PathBuilder, Paint, FillRule, Transform};
+
 pub fn draw_into_buffer(individual: &Individual, pixmap: &mut Pixmap) {
-    for poly in &individual.chromosomes {
+    for shape in &individual.chromosomes {
         let mut pb = PathBuilder::new();
 
-        if let Some(first) = poly.points.first() {
-            pb.move_to(first.x as f32, first.y as f32);
-
-            for point in poly.points.iter().skip(1) {
-                pb.line_to(point.x as f32, point.y as f32);
+        if shape.is_polygon {
+            // Existing polygon logic
+            if let Some(first) = shape.points.first() {
+                pb.move_to(first.x as f32, first.y as f32);
+                for point in shape.points.iter().skip(1) {
+                    pb.line_to(point.x as f32, point.y as f32);
+                }
+                pb.close();
             }
-            pb.close();
+        } else {
+            // Ellipse logic: assumes points[0] and points[1] make up the bounding box
+            if shape.points.len() >= 2 {
+                let p1 = &shape.points[0];
+                let p2 = &shape.points[1];
+
+                if let Some(rect) = Rect::from_ltrb(p1.x as f32, p1.y as f32, p2.x as f32, p2.y as f32) {
+                    pb.push_oval(rect);
+                }
+            }
         }
 
+        // The rest stays exactly the same
         if let Some(path) = pb.finish() {
             let mut paint = Paint::default();
 
             paint.set_color_rgba8(
-                poly.color[0],
-                poly.color[1],
-                poly.color[2],
-                poly.color[3]
+                shape.color[0],
+                shape.color[1],
+                shape.color[2],
+                shape.color[3]
             );
 
             paint.anti_alias = false;
@@ -53,7 +68,7 @@ pub fn initIndividual(start_count: i16,width : u32, height : u32) -> Individual 
 
     let mut polygons = vec![];
     for i in 0..start_count{
-        polygons.push(polygon::CreatePolygon(7, width as u16, height as u16))
+        polygons.push(polygon::create_polygon(7, width as u16, height as u16,1.4))
     }
 
     let mut indi = Individual{

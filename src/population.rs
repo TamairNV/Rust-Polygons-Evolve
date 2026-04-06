@@ -2,7 +2,7 @@ use image::{ImageBuffer, Rgba, RgbaImage};
 use imageproc::point::Point;
 use rand::Rng;
 use crate::individual::{draw_into_buffer, evaluate_with_buffer, initIndividual, Individual};
-use crate::polygon::{CreatePolygon, Polygon};
+use crate::polygon::{create_ellipse, create_polygon, Shape};
 use rand_distr::{Distribution, Normal};
 pub struct Population {
     pub individuals : Vec<Individual>,
@@ -57,13 +57,17 @@ fn survive(rate : f32,  population: &mut Population, target: &Vec<u8>,width: u32
 }
 
 
-fn combine(indi1: &Individual, indi2: &Individual) -> Individual {
+fn combine(indi1: &Individual, indi2: &Individual,combine_function: fn(&Individual,&Individual) -> Individual) -> Individual {
+    combine_function(indi1,indi2)
+}
+
+pub fn uniform_crossover(indi1: &Individual, indi2: &Individual) -> Individual {
     let mut rng = rand::thread_rng();
     let mut child  = vec![];
     let mut out = &indi1;
 
 
-    let zipped: Vec<_> = indi1.chromosomes.iter().zip(indi1.chromosomes.iter()).collect();
+    let zipped: Vec<_> = indi1.chromosomes.iter().zip(indi2.chromosomes.iter()).collect();
     let pivot = rng.gen_range(0.1..0.9);
     for shape in zipped {
         if rng.gen_range(0.0..1.0) > pivot{
@@ -80,7 +84,24 @@ fn combine(indi1: &Individual, indi2: &Individual) -> Individual {
     };
 
     new_indi
+}
 
+
+pub fn array_based_pivot(indi1: &Individual, indi2: &Individual) -> Individual {
+    let mut rng = rand::thread_rng();
+
+    let min_len = indi1.chromosomes.len().min(indi2.chromosomes.len());
+    let pivot_point = (min_len as f32 * rng.gen_range(0.1..0.9)) as usize;
+
+    let mut child = Vec::with_capacity(indi1.chromosomes.len() + indi2.chromosomes.len());
+
+    child.extend_from_slice(&indi1.chromosomes[..pivot_point]);
+    child.extend_from_slice(&indi2.chromosomes[pivot_point..]);
+
+    Individual {
+        chromosomes: child,
+        fitness: indi1.fitness,
+    }
 }
 
 fn select(population: &Population, size: f32) -> Vec<&Individual> {
@@ -106,21 +127,20 @@ fn select(population: &Population, size: f32) -> Vec<&Individual> {
 
 use rayon::prelude::*;
 
-pub fn run_evolution(population: &mut Population, target: &Vec<u8>, mutate_rate: f32, max_sizes: u8, width: u32, height: u32, pop_size: usize) {
+pub fn run_evolution(population: &mut Population, target: &Vec<u8>, mutate_rate: f32, max_sizes: u8, width: u32, height: u32, pop_size: usize,mutation_mul : f32,shape_size_mul : f64,survival_rate : f32,combine_function: fn(&Individual,&Individual) -> Individual) {
 
-    survive(0.4, population, target, width, height);
+    survive(survival_rate, population, target, width, height);
 
 
     let individuals: Vec<Individual> = (0..pop_size)
-        .into_par_iter() // <--- This splits the breeding across all cores!
+        .into_par_iter()
         .map(|_| {
-            let mut rng = rand::thread_rng(); // Safe to use in threads
-
+            let mut rng = rand::thread_rng();
             let parents = select(population, 0.08);
-            let mut new_indi = combine(&parents[0], &parents[1]);
+            let mut new_indi = combine(&parents[0], &parents[1],combine_function);
 
             if rng.gen_range(0.0..1.0) < mutate_rate {
-                mutate(&mut new_indi, 0.0, max_sizes, width, height);
+                mutate(&mut new_indi, mutation_mul, max_sizes, width, height,shape_size_mul);
             }
 
             new_indi
@@ -138,13 +158,18 @@ use crate::{individual, polygon};
 use rand::seq::SliceRandom;
 
 // Notice I removed the return type -> Individual
-fn mutate(individual: &mut Individual, size: f32, max_sizes: u8, width: u32, height: u32) {
+fn mutate(individual: &mut Individual, mul: f32, max_sizes: u8, width: u32, height: u32,shape_size_mul : f64) {
     let mut rng = rand::thread_rng();
 
     let len = individual.chromosomes.len();
 
-    if rng.gen_bool(0.15) && len < 1000 {
-        individual.chromosomes.push(CreatePolygon(max_sizes, width as u16, height as u16));
+    if rng.gen_bool(0.08) && len < 1000 {
+        if rng.gen_bool(0.4){
+            individual.chromosomes.push(create_ellipse(width as u16, height as u16,shape_size_mul));
+        }else{
+            individual.chromosomes.push(create_polygon(max_sizes,width as u16, height as u16,shape_size_mul));
+        }
+
     } else if rng.gen_bool(0.1) && len > 0 {
         individual.chromosomes.remove(rng.gen_range(0..len));
     }
@@ -161,10 +186,18 @@ fn mutate(individual: &mut Individual, size: f32, max_sizes: u8, width: u32, hei
 
         // Mutate points
         if rng.gen_bool(0.15) {
-            for p in &mut poly.points {
-                p.x += normal.sample(&mut rng) as i32;
-                p.y += normal.sample(&mut rng) as i32;
+
+            if poly.is_polygon{
+                for p in &mut poly.points {
+                    p.x += (normal.sample(&mut rng)  * mul ) as i32;
+                    p.y += (normal.sample(&mut rng)  * mul ) as i32;
+                }
             }
+            else{
+                poly.points[1].x += (normal.sample(&mut rng)  * mul ) as i32;
+                poly.points[1].y += (normal.sample(&mut rng)  * mul ) as i32;
+            }
+
         }
 
         // Mutate colors
@@ -179,12 +212,22 @@ fn mutate(individual: &mut Individual, size: f32, max_sizes: u8, width: u32, hei
 
         // Translate all points
         if rng.gen_bool(0.1) {
-            let x_change = normal.sample(&mut rng) as i32;
-            let y_change = normal.sample(&mut rng) as i32;
-            for p in &mut poly.points {
-                p.x += x_change;
-                p.y += y_change;
+            let x_change = (normal.sample(&mut rng)  * mul ) as i32;
+            let y_change = (normal.sample(&mut rng)  * mul ) as i32;
+            if poly.is_polygon{
+
+                for p in &mut poly.points {
+                    p.x += x_change;
+                    p.y += y_change;
+                }
             }
+            else{
+                poly.points[0].x += x_change;
+                poly.points[0].y += y_change;
+
+            }
+
+
         }
     }
 }

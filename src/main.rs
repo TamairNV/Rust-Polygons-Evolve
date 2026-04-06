@@ -7,8 +7,8 @@ use image::{GenericImageView, Rgba, RgbaImage};
 use js_sys::Math::{fround, round};
 // Switched to Rgba
 use std::time::Instant;
-use crate::individual::{draw_into_buffer, initIndividual};
-use crate::population::{init_population, run_evolution, Population};
+use crate::individual::{draw_into_buffer, initIndividual, Individual};
+use crate::population::{init_population, run_evolution, Population,uniform_crossover,array_based_pivot};
 
 
 
@@ -47,9 +47,11 @@ fn main() {
     let rounded_fitness = (best_ind.fitness * 1000.0).round() / 1000.0;
 
     let path = format!("out/{file_name}_{generations}_{pop_size}_{size}_{rounded_fitness}.png");
+    println!("{}",path);
     output_img.save(path).unwrap();
 
     println!("Done. Time elapsed: {:?}", start.elapsed());
+
 
     //cargo run --release -- 9c.png 10000 500
 }
@@ -84,19 +86,60 @@ impl EvolutionEngine {
     }
 
     pub fn run_generations(&mut self)->Vec<u8> {
+        let mut mutation_mul = 1.5;
+        let mut mutation_rate = 0.9;
+        let mut shape_size_mul = 1.4;
+        let mut  survival_rate = 0.3;
 
+        let mut combine_function: fn(&Individual, &Individual) -> Individual = uniform_crossover;
+
+        // Now it perfectly accepts the new function!
+        combine_function = array_based_pivot;
         for i in 0..self.generations {
+
+            let best_fitness = self.population.individuals[0].fitness;
+            if best_fitness > 0.952 {
+                mutation_mul = 0.5;
+                mutation_rate = 0.5;
+                shape_size_mul = 0.5;
+                survival_rate = 0.4;
+                combine_function = array_based_pivot;
+            }
+
+            else if best_fitness > 0.94 {
+                mutation_mul = 1.0;
+                mutation_rate = 0.6;
+                shape_size_mul = 0.8;
+                survival_rate = 0.35;
+                combine_function = array_based_pivot;
+            }
+
+
+            else if best_fitness > 0.92 {
+                mutation_mul = 1.35;
+                mutation_rate = 0.8;
+                shape_size_mul = 1.0;
+            }
+
+
+
             if i %50 == 0 {
-                println!("Generation {}", i);
+                let best_length = self.population.individuals[0].chromosomes.len();
+                println!("{} Generation {} best fitness {} ", best_length,i , best_fitness);
             }
             run_evolution(
                 &mut self.population,
                 &self.target_bytes,
-                0.65,
+                mutation_rate,
                 7,
                 self.width,
                 self.height,
-                self.pop_size as usize // 2. Use the dynamic size!
+                self.pop_size as usize,
+                mutation_mul,
+                shape_size_mul,
+                survival_rate,
+                combine_function
+
             );
         }
         self.population.individuals.sort_by(|a, b| b.fitness.total_cmp(&a.fitness));
