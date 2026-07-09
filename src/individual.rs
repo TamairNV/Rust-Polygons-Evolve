@@ -21,7 +21,7 @@ pub fn draw_into_buffer(individual: &Individual, pixmap: &mut Pixmap) {
         let mut pb = PathBuilder::new();
 
         if shape.is_polygon {
-            // Existing polygon logic
+      
             if let Some(first) = shape.points.first() {
                 pb.move_to(first.x as f32, first.y as f32);
                 for point in shape.points.iter().skip(1) {
@@ -30,7 +30,7 @@ pub fn draw_into_buffer(individual: &Individual, pixmap: &mut Pixmap) {
                 pb.close();
             }
         } else {
-            // Ellipse logic: assumes points[0] and points[1] make up the bounding box
+       
             if shape.points.len() >= 2 {
                 let p1 = &shape.points[0];
                 let p2 = &shape.points[1];
@@ -40,8 +40,7 @@ pub fn draw_into_buffer(individual: &Individual, pixmap: &mut Pixmap) {
                 }
             }
         }
-
-        // The rest stays exactly the same
+        
         if let Some(path) = pb.finish() {
             let mut paint = Paint::default();
 

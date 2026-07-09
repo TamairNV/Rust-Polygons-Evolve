@@ -30,23 +30,13 @@ use tiny_skia::Pixmap;
 fn survive(rate : f32,  population: &mut Population, target: &Vec<u8>,width: u32, height: u32){
 
 
-
-
-    // 1. Create ONE reusable buffer before the loop starts
     population.individuals.par_iter_mut().for_each_init(
-        // 1. INIT: Create ONE buffer per thread
         || tiny_skia::Pixmap::new(width, height).unwrap(),
-
-        // 2. WORK: The thread uses its specific buffer to evaluate the individual
         |buffer, ind| {
-            // A. Clear the buffer
             buffer.fill(tiny_skia::Color::WHITE);
-
-            // B. Draw into the thread's reusable buffer
             draw_into_buffer(ind, buffer);
-
-            // C. Evaluate the fitness
             ind.fitness = evaluate_with_buffer(buffer, target);
+
         }
     );
     population.individuals.sort_by(|a, b| b.fitness.total_cmp(&a.fitness));
@@ -157,13 +147,12 @@ pub fn run_evolution(population: &mut Population, target: &Vec<u8>, mutate_rate:
 use crate::{individual, polygon};
 use rand::seq::SliceRandom;
 
-// Notice I removed the return type -> Individual
 fn mutate(individual: &mut Individual, mul: f32, max_sizes: u8, width: u32, height: u32,shape_size_mul : f64) {
     let mut rng = rand::thread_rng();
 
     let len = individual.chromosomes.len();
 
-    if rng.gen_bool(0.08) && len < 1000 {
+    if rng.gen_bool(0.08) && len < 100 {
         if rng.gen_bool(0.4){
             individual.chromosomes.push(create_ellipse(width as u16, height as u16,shape_size_mul));
         }else{

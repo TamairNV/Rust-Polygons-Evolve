@@ -53,7 +53,7 @@ fn main() {
     println!("Done. Time elapsed: {:?}", start.elapsed());
 
 
-    //cargo run --release -- 9c.png 10000 500
+    //RUSTFLAGS="-C target-cpu=native" cargo run --release -- 9c.png 10000 500
 }
 
 
@@ -93,7 +93,6 @@ impl EvolutionEngine {
 
         let mut combine_function: fn(&Individual, &Individual) -> Individual = uniform_crossover;
 
-        // Now it perfectly accepts the new function!
         combine_function = array_based_pivot;
         for i in 0..self.generations {
 
